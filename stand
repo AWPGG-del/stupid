@@ -1,15 +1,13 @@
 --// =====================================================
---// CAPYSTAND + JOJO ENGINE (ULTIMATE COMBINED VERSION)
---// 10x Fast Tracking, Auto-Stomp, Webhooks & Optimizations
+--// CAPYSTAND + JOJO ENGINE (WITH 10X KNOCK & BRING)
 --// =====================================================
 
--- Ensure global settings exist
 getgenv().Settings = getgenv().Settings or {}
 
 local Settings = {
     Owner = getgenv().Settings.Owner or "OShisysj",
     Position = getgenv().Settings.Position or "Right",
-    Attack = getgenv().Settings.Attack or "Light!",
+    Attack = getgenv().Settings.Attack or "Heavy!",
     Weapon = getgenv().Settings.Weapon or "Combat",
     FollowSpeed = getgenv().Settings.FollowSpeed or 30,
     FloatHeight = getgenv().Settings.FloatHeight or 2,
@@ -245,47 +243,109 @@ end)
 --==================================================
 -- 10X FAST KNOCK ATTACK
 --==================================================
+local function knockCore(target)
+    local startTime = time()
+    local mainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
+
+    while following and target and target.Parent == Players and target.Character do
+        if time() - startTime >= 15 then break end
+
+        local myHRP = getHRP(StandPlayer)
+        local enemyHRP = getHRP(target)
+
+        if not myHRP or not enemyHRP or isKnocked(target.Character) then
+            print("Target Knocked!")
+            break
+        end
+
+        local distance = (myHRP.Position - enemyHRP.Position).Magnitude
+
+        if distance > 4 then
+            local direction = enemyHRP.Position - myHRP.Position
+            if direction.Magnitude > 0 then direction = direction.Unit end
+            myHRP.AssemblyLinearVelocity = direction * 300
+            myHRP.CFrame = CFrame.new(myHRP.Position, enemyHRP.Position)
+        else
+            charging = true
+            myHRP.CFrame = enemyHRP.CFrame * CFrame.new(0, 0, 1.2)
+            myHRP.AssemblyLinearVelocity = Vector3.zero
+            
+            if mainEvent then mainEvent:FireServer("Melee", enemyHRP.Position) end
+            
+            if Settings.Weapon == "Knife" then
+                chargeAttack(0.6)
+            else
+                local tool = equipTool()
+                if tool then tool:Activate() end
+            end
+            charging = false
+        end
+        task.wait()
+    end
+end
+
 local function knock(target)
     if attacking or not target or target == StandPlayer then return end
     attacking = true
     charging = false
 
     task.spawn(function()
-        local success, err = pcall(function()
-            local startTime = time()
-            local mainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
+        pcall(function() knockCore(target) end)
+        
+        local myHRP = getHRP(StandPlayer)
+        if myHRP then
+            myHRP.AssemblyLinearVelocity = Vector3.zero
+            myHRP.AssemblyAngularVelocity = Vector3.zero
+        end
+        attacking = false
+    end)
+end
 
-            while following and target and target.Parent == Players and target.Character do
-                if time() - startTime >= 15 then break end
+--==================================================
+-- BRING COMMAND (KNOCK + CARRY TO OWNER)
+--==================================================
+local function bring(target)
+    if attacking or not target or target == StandPlayer then return end
+    attacking = true
+    charging = false
 
-                local myHRP = getHRP(StandPlayer)
-                local enemyHRP = getHRP(target)
+    task.spawn(function()
+        pcall(function()
+            -- Step 1: Knock Target
+            knockCore(target)
+            
+            -- Step 2: Grab & Bring to Owner
+            local enemyHRP = getHRP(target)
+            local ownerHRP = getHRP(OwnerPlayer)
+            local myHRP = getHRP(StandPlayer)
 
-                if not myHRP or not enemyHRP or isKnocked(target.Character) then
-                    print("Target Knocked! Disengaging...")
-                    break
-                end
-
-                local distance = (myHRP.Position - enemyHRP.Position).Magnitude
-
-                if distance > 4 then
-                    local direction = enemyHRP.Position - myHRP.Position
-                    if direction.Magnitude > 0 then direction = direction.Unit end
-                    myHRP.AssemblyLinearVelocity = direction * 300
-                    myHRP.CFrame = CFrame.new(myHRP.Position, enemyHRP.Position)
-                else
-                    charging = true
-                    myHRP.CFrame = enemyHRP.CFrame * CFrame.new(0, 0, 1.2)
-                    myHRP.AssemblyLinearVelocity = Vector3.zero
+            if enemyHRP and ownerHRP and myHRP then
+                print("Grabbing target and bringing to owner...")
+                local startTime = time()
+                
+                while target and target.Character and (time() - startTime < 4) do
+                    local ownerCF = ownerHRP.CFrame * CFrame.new(0, 0, -2.5)
                     
-                    if mainEvent then mainEvent:FireServer("Melee", enemyHRP.Position) end
-                    chargeAttack(0.5)
-                    charging = false
+                    -- Snap Stand and Target to Owner's front
+                    myHRP.CFrame = ownerCF
+                    enemyHRP.CFrame = ownerCF
+                    
+                    myHRP.AssemblyLinearVelocity = Vector3.zero
+                    enemyHRP.AssemblyLinearVelocity = Vector3.zero
+
+                    -- Press G to grab if in Da Hood
+                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.G, false, game)
+                    task.wait(0.05)
+                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.G, false, game)
+                    task.wait(0.1)
+
+                    if (enemyHRP.Position - ownerHRP.Position).Magnitude <= 5 then
+                        break
+                    end
                 end
-                task.wait()
             end
         end)
-        
+
         local myHRP = getHRP(StandPlayer)
         if myHRP then
             myHRP.AssemblyLinearVelocity = Vector3.zero
@@ -344,7 +404,7 @@ end
 
 local function onOwnerChatted(message)
     if typeof(message) ~= "string" then return end
-    message = message:lower():gsub("!", "") -- Supports both "knock" and "knock!"
+    message = message:lower():gsub("!", "")
     local split = message:split(" ")
     local command = split[1]
     if not command then return end
@@ -362,6 +422,9 @@ local function onOwnerChatted(message)
     elseif command == "knock" or command == "k" then
         local target = findPlayer(arguments)
         if target then knock(target) else warn("Player not found") end
+    elseif command == "bring" or command == "b" then
+        local target = findPlayer(arguments)
+        if target then bring(target) else warn("Player not found") end
     elseif command == "ko" or command == "stomp" then
         local target = findPlayer(arguments)
         if target then task.spawn(stomp, target) end
@@ -405,5 +468,5 @@ StandPlayer.CharacterAdded:Connect(function()
     if OwnerPlayer then summon() end
 end)
 
-StarterGui:SetCore("SendNotification", {Title = "Combined Stand Loaded", Text = "Settings + JoJo Engine active!", Duration = 5})
+StarterGui:SetCore("SendNotification", {Title = "CapyStand Loaded", Text = "Commands: knock, bring, stomp, combat, knife", Duration = 5})
 summon()
