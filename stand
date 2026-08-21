@@ -1,6 +1,6 @@
 --// =====================================================
 --// CAPYSTAND + JUJUBOT v3 INTEGRATED
---// Complete Dynamic Floating Stand Engine & Utilities
+--// Complete Dynamic Floating Stand Engine & Fast KO Tracking
 --// =====================================================
 
 -- Ensure global settings exist
@@ -11,7 +11,7 @@ local Settings = {
     Position = getgenv().Settings.Position or "Right",
     Attack = getgenv().Settings.Attack or "Light!",
     Weapon = getgenv().Settings.Weapon or "Combat", -- "Combat" or "Knife"
-    FollowSpeed = getgenv().Settings.FollowSpeed or 16,
+    FollowSpeed = getgenv().Settings.FollowSpeed or 25,
     FloatHeight = getgenv().Settings.FloatHeight or 4,
     Deadzone = getgenv().Settings.Deadzone or 0.15,
     FPSCAP = getgenv().Settings.FPSCAP or 60,
@@ -190,6 +190,8 @@ LocalPlayer.CharacterAdded:Connect(setupCharacter)
 
 local summoned = false
 local following = false
+local targetKnockMode = false
+local currentTarget = nil
 local positionMode = Settings.Position
 
 local chatConnection = nil
@@ -223,6 +225,8 @@ local function summonBot()
         warn("JujuBot: Owner not found.")
         return
     end
+    targetKnockMode = false
+    currentTarget = nil
     summoned = true
     following = true
     print("JujuBot summoned!")
@@ -231,11 +235,13 @@ end
 local function stopBot()
     summoned = false
     following = false
+    targetKnockMode = false
+    currentTarget = nil
     print("JujuBot stopped.")
 end
 
 --==================================================
--- TARGET FINDER & KNOCK SYSTEM
+-- KO DETECTION & HIGH-SPEED TARGET TRACKING
 --==================================================
 
 local function getTargetPlayer(name)
@@ -248,6 +254,39 @@ local function getTargetPlayer(name)
     return nil
 end
 
+-- Checks if the target is knocked out / downed
+local function isTargetKnocked(target)
+    if not target or not target.Character then return true end
+    
+    local char = target.Character
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    
+    -- Generic health check
+    if hum and hum.Health <= 1 then return true end
+    
+    -- Da Hood specific BodyEffects KO check
+    local bodyEffects = char:FindFirstChild("BodyEffects")
+    if bodyEffects then
+        local ko = bodyEffects:FindFirstChild("K.O") or bodyEffects:FindFirstChild("KO")
+        if ko and ko.Value == true then
+            return true
+        end
+    end
+    
+    -- Animation check for Downed / KO state
+    if hum then
+        for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
+            local animName = track.Name:lower()
+            if animName:find("knock") or animName:find("ko") or animName:find("down") then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+-- Fast Knock Loop
 local function KnockTarget(targetName)
     local target = getTargetPlayer(targetName)
     if not target or not target.Character then
@@ -255,43 +294,59 @@ local function KnockTarget(targetName)
         return
     end
 
-    local char = LocalPlayer.Character
-    local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
-    local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+    currentTarget = target
+    targetKnockMode = true
+    following = false -- Pause standard owner tracking
 
-    if not char or not targetRoot or not myRoot then return end
+    print("JujuBot: Locking onto target -> " .. target.Name)
 
-    -- Temporarily pause standard follow while attacking
-    following = false
+    task.spawn(function()
+        local startTime = tick()
+        
+        while targetKnockMode and currentTarget == target do
+            -- Safety Timeout (12 seconds) or KO Detection check
+            if tick() - startTime > 12 or isTargetKnocked(target) then
+                print("JujuBot: Target successfully knocked or timed out. Returning to owner.")
+                break
+            end
 
-    local weaponName = Settings.Weapon == "Knife" and "[Knife]" or "Combat"
-    local tool = char:FindFirstChild(weaponName) or LocalPlayer.Backpack:FindFirstChild(weaponName)
+            local myChar = LocalPlayer.Character
+            local targetChar = target.Character
+            
+            if myChar and targetChar then
+                local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+                local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
 
-    if tool then
-        tool.Parent = char
+                if myRoot and targetRoot then
+                    -- Stick directly behind target
+                    myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 1.8)
 
-        -- Teleport directly behind target
-        myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
-
-        task.spawn(function()
-            for _ = 1, 6 do
-                if tool and tool.Parent == char then
-                    tool:Activate()
-                    task.wait(0.1)
+                    -- Trigger attack tool
+                    local weaponName = Settings.Weapon == "Knife" and "[Knife]" or "Combat"
+                    local tool = myChar:FindFirstChild(weaponName) or LocalPlayer.Backpack:FindFirstChild(weaponName)
+                    
+                    if tool then
+                        tool.Parent = myChar
+                        tool:Activate()
+                    end
                 end
             end
-            -- Resume owner follow
+
+            task.wait(0.03) -- High-frequency loop
+        end
+
+        -- Cleanup & return to owner
+        targetKnockMode = false
+        currentTarget = nil
+        if summoned then
             following = true
-        end)
-    else
-        warn("JujuBot: Weapon not found -> " .. weaponName)
-        following = true
-    end
+        end
+    end)
 end
 
--- RenderStepped Smooth Movement Calculation
+-- RenderStepped Main Stance & Standard Follow Loop
 RunService.RenderStepped:Connect(function(deltaTime)
-    if not summoned or not following then return end
+    if targetKnockMode or not summoned or not following then return end
 
     local owner = getOwner()
     if not owner or not owner.Character then return end
@@ -331,6 +386,7 @@ local function handleCommand(message)
     elseif cmd == "stop!" then
         stopBot()
     elseif cmd == "follow!" then
+        targetKnockMode = false
         summoned = true
         following = true
     elseif cmd == "left!" then
@@ -393,7 +449,7 @@ end)
 -- Notification & Startup Summary
 StarterGui:SetCore("SendNotification", {
     Title = "CapyStand + JujuBot v3",
-    Text = "Loaded successfully!",
+    Text = "Loaded successfully with KO Tracking!",
     Duration = 8,
 })
 
