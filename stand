@@ -1,9 +1,7 @@
 --// =====================================================
---// CAPYSTAND + JUJUBOT v3 INTEGRATED
---// Complete Dynamic Floating Stand Engine & Fast KO Tracking
+--// CAPYSTAND + JUJUBOT v4 (SUPERFAST TRACK & KO)
 --// =====================================================
 
--- Ensure global settings exist
 getgenv().Settings = getgenv().Settings or {}
 
 local Settings = {
@@ -11,7 +9,7 @@ local Settings = {
     Position = getgenv().Settings.Position or "Right",
     Attack = getgenv().Settings.Attack or "Light!",
     Weapon = getgenv().Settings.Weapon or "Combat", -- "Combat" or "Knife"
-    FollowSpeed = getgenv().Settings.FollowSpeed or 25,
+    FollowSpeed = getgenv().Settings.FollowSpeed or 30,
     FloatHeight = getgenv().Settings.FloatHeight or 4,
     Deadzone = getgenv().Settings.Deadzone or 0.15,
     FPSCAP = getgenv().Settings.FPSCAP or 60,
@@ -19,10 +17,8 @@ local Settings = {
     NoFace = getgenv().Settings.NoFace or "Off"
 }
 
--- Config & Master Setup
 getgenv().ownershere = false
 getgenv().Masters1 = { 'punchy39' }
-
 getgenv().ownershere2 = false
 getgenv().Masters2 = { 'creamycunny' }
 
@@ -35,13 +31,11 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local VirtualUser = game:GetService("VirtualUser")
 local StarterGui = game:GetService("StarterGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LocalPlayer = Players.LocalPlayer
 
---==================================================
 -- EXECUTOR DETECTOR & WEBHOOK LOGGING
---==================================================
-
 local executor = is_sirhurt_closure and "Sirhurt" 
     or (pebc_execute and "ProtoSmasher") 
     or (syn and "Synapse X") 
@@ -100,10 +94,7 @@ if request then
     end)
 end
 
---==================================================
--- ANTI-CHEAT BYPASS & UTILITIES
---==================================================
-
+-- ANTI-CHEAT BYPASS
 local grm = getrawmetatable(game)
 if grm then
     setreadonly(grm, false)
@@ -132,62 +123,7 @@ for _, part in ipairs(Workspace:GetDescendants()) do
     end
 end
 
--- Low Graphics Option
-if Settings.LowGraphics == "On" then
-    Workspace.Terrain.WaterWaveSize = 0
-    Workspace.Terrain.WaterWaveSpeed = 0
-    Workspace.Terrain.WaterReflectance = 0
-    Workspace.Terrain.WaterTransparency = 0
-    game.Lighting.GlobalShadows = false
-    game.Lighting.FogEnd = 9e9
-    game.Lighting.Brightness = 0
-    settings().Rendering.QualityLevel = "Level01"
-
-    for _, obj in ipairs(game:GetDescendants()) do
-        if obj:IsA("BasePart") or obj:IsA("MeshPart") then
-            obj.Material = Enum.Material.Plastic
-            obj.Reflectance = 0
-        elseif obj:IsA("Decal") or obj:IsA("Texture") then
-            obj.Transparency = 1
-        elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
-            obj.Lifetime = NumberRange.new(0)
-        elseif obj:IsA("Fire") or obj:IsA("SpotLight") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-            obj.Enabled = false
-        end
-    end
-end
-
--- FPS Cap Limit
-_G.FPS = Settings.FPSCAP
-_G.fps = true
-local lastFrame = tick()
-
-RunService.RenderStepped:Connect(function()
-    if _G.fps then
-        while lastFrame + (1 / _G.FPS) > tick() do end
-        task.wait()
-        lastFrame = tick()
-    end
-end)
-
--- Remove Face
-local function setupCharacter(char)
-    if Settings.NoFace == "On" then
-        local head = char:WaitForChild("Head", 3)
-        if head then
-            local face = head:FindFirstChild("face")
-            if face then face:Destroy() end
-        end
-    end
-end
-
-if LocalPlayer.Character then setupCharacter(LocalPlayer.Character) end
-LocalPlayer.CharacterAdded:Connect(setupCharacter)
-
---==================================================
--- JUJUBOT FLOATING STAND LOGIC
---==================================================
-
+-- STAND STATE CONTROL
 local summoned = false
 local following = false
 local targetKnockMode = false
@@ -219,31 +155,6 @@ local function getOffset()
     return Vector3.new(5, Settings.FloatHeight, 0)
 end
 
-local function summonBot()
-    local owner = getOwner()
-    if not owner or not owner.Character then
-        warn("JujuBot: Owner not found.")
-        return
-    end
-    targetKnockMode = false
-    currentTarget = nil
-    summoned = true
-    following = true
-    print("JujuBot summoned!")
-end
-
-local function stopBot()
-    summoned = false
-    following = false
-    targetKnockMode = false
-    currentTarget = nil
-    print("JujuBot stopped.")
-end
-
---==================================================
--- KO DETECTION & HIGH-SPEED TARGET TRACKING
---==================================================
-
 local function getTargetPlayer(name)
     name = name:lower()
     for _, player in ipairs(Players:GetPlayers()) do
@@ -254,17 +165,16 @@ local function getTargetPlayer(name)
     return nil
 end
 
--- Checks if the target is knocked out / downed
+-- ACCURATE KO CHECK
 local function isTargetKnocked(target)
     if not target or not target.Character then return true end
     
     local char = target.Character
     local hum = char:FindFirstChildOfClass("Humanoid")
     
-    -- Generic health check
     if hum and hum.Health <= 1 then return true end
     
-    -- Da Hood specific BodyEffects KO check
+    -- Check BodyEffects (Da Hood)
     local bodyEffects = char:FindFirstChild("BodyEffects")
     if bodyEffects then
         local ko = bodyEffects:FindFirstChild("K.O") or bodyEffects:FindFirstChild("KO")
@@ -273,11 +183,11 @@ local function isTargetKnocked(target)
         end
     end
     
-    -- Animation check for Downed / KO state
+    -- Check for KO animations
     if hum then
         for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
             local animName = track.Name:lower()
-            if animName:find("knock") or animName:find("ko") or animName:find("down") then
+            if animName:find("knock") or animName:find("ko") or animName:find("down") or animName:find("ragdoll") then
                 return true
             end
         end
@@ -286,7 +196,7 @@ local function isTargetKnocked(target)
     return false
 end
 
--- Fast Knock Loop
+-- ULTRA-FAST KNOCK TRACKING LOOP
 local function KnockTarget(targetName)
     local target = getTargetPlayer(targetName)
     if not target or not target.Character then
@@ -296,17 +206,18 @@ local function KnockTarget(targetName)
 
     currentTarget = target
     targetKnockMode = true
-    following = false -- Pause standard owner tracking
+    following = false
 
-    print("JujuBot: Locking onto target -> " .. target.Name)
+    print("JujuBot: Hyper-Tracking -> " .. target.Name)
 
     task.spawn(function()
+        local mainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
         local startTime = tick()
         
         while targetKnockMode and currentTarget == target do
-            -- Safety Timeout (12 seconds) or KO Detection check
-            if tick() - startTime > 12 or isTargetKnocked(target) then
-                print("JujuBot: Target successfully knocked or timed out. Returning to owner.")
+            -- End when target is knocked or 15-second timeout hits
+            if isTargetKnocked(target) or (tick() - startTime > 15) then
+                print("JujuBot: Target knocked out! Retracting stand.")
                 break
             end
 
@@ -318,10 +229,11 @@ local function KnockTarget(targetName)
                 local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
 
                 if myRoot and targetRoot then
-                    -- Stick directly behind target
-                    myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 1.8)
+                    -- Position directly inside/behind the target
+                    myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 1)
+                    myRoot.Velocity = Vector3.new(0, 0, 0) -- Strip falling/physics lag
 
-                    -- Trigger attack tool
+                    -- Equipment selection
                     local weaponName = Settings.Weapon == "Knife" and "[Knife]" or "Combat"
                     local tool = myChar:FindFirstChild(weaponName) or LocalPlayer.Backpack:FindFirstChild(weaponName)
                     
@@ -329,13 +241,17 @@ local function KnockTarget(targetName)
                         tool.Parent = myChar
                         tool:Activate()
                     end
+
+                    -- Fire direct event packet to bypass client attack lag
+                    if mainEvent then
+                        mainEvent:FireServer("Melee", targetRoot.Position)
+                    end
                 end
             end
 
-            task.wait(0.03) -- High-frequency loop
+            RunService.RenderStepped:Wait() -- Run every single render frame
         end
 
-        -- Cleanup & return to owner
         targetKnockMode = false
         currentTarget = nil
         if summoned then
@@ -344,7 +260,7 @@ local function KnockTarget(targetName)
     end)
 end
 
--- RenderStepped Main Stance & Standard Follow Loop
+-- STAND FOLLOW RENDER LOOP
 RunService.RenderStepped:Connect(function(deltaTime)
     if targetKnockMode or not summoned or not following then return end
 
@@ -372,19 +288,20 @@ RunService.RenderStepped:Connect(function(deltaTime)
     end
 end)
 
---==================================================
 -- COMMAND HANDLER
---==================================================
-
 local function handleCommand(message)
     local args = string.split(message, " ")
     local cmd = args[1]:lower()
 
-    -- Movement Commands
     if cmd == "summon!" then
-        summonBot()
+        targetKnockMode = false
+        summoned = true
+        following = true
     elseif cmd == "stop!" then
-        stopBot()
+        summoned = false
+        following = false
+        targetKnockMode = false
+        currentTarget = nil
     elseif cmd == "follow!" then
         targetKnockMode = false
         summoned = true
@@ -397,16 +314,10 @@ local function handleCommand(message)
         positionMode = "Back"
     elseif cmd == "under!" then
         positionMode = "Under"
-
-    -- Weapon Mode Selectors
     elseif cmd == "combat!" then
         Settings.Weapon = "Combat"
-        print("JujuBot: Set weapon to COMBAT")
     elseif cmd == "knife!" then
         Settings.Weapon = "Knife"
-        print("JujuBot: Set weapon to KNIFE")
-
-    -- Targeted Knock Command
     elseif (cmd == "knock!" or cmd == "knock") and args[2] then
         KnockTarget(args[2])
     end
@@ -414,20 +325,13 @@ end
 
 local function connectOwner()
     local owner = getOwner()
-    if not owner then
-        print("JujuBot waiting for owner...")
-        return
-    end
-
+    if not owner then return end
     if connectedOwner == owner then return end
 
-    if chatConnection then
-        chatConnection:Disconnect()
-    end
+    if chatConnection then chatConnection:Disconnect() end
 
     connectedOwner = owner
     chatConnection = owner.Chatted:Connect(handleCommand)
-    print("JujuBot connected to owner: " .. owner.Name)
 end
 
 connectOwner()
@@ -437,8 +341,6 @@ Players.PlayerAdded:Connect(function(player)
         task.wait(1)
         connectOwner()
     end
-    if table.find(getgenv().Masters1, player.Name) then getgenv().ownershere = true end
-    if table.find(getgenv().Masters2, player.Name) then getgenv().ownershere2 = true end
 end)
 
 LocalPlayer.CharacterAdded:Connect(function()
@@ -446,18 +348,8 @@ LocalPlayer.CharacterAdded:Connect(function()
     if summoned then following = true end
 end)
 
--- Notification & Startup Summary
 StarterGui:SetCore("SendNotification", {
-    Title = "CapyStand + JujuBot v3",
-    Text = "Loaded successfully with KO Tracking!",
-    Duration = 8,
+    Title = "CapyStand v4 Ready",
+    Text = "Max Speed Tracking Enabled!",
+    Duration = 5,
 })
-
-print("===================================")
-print("   JUJUBOT v3 + CAPYSTAND LOADED")
-print("===================================")
-print("Owner: " .. Settings.Owner)
-print("Position Mode: " .. positionMode)
-print("Selected Weapon: " .. Settings.Weapon)
-print("Commands: summon!, stop!, follow!, left!, right!, back!, under!, combat!, knife!, knock! [user]")
-print("===================================")
