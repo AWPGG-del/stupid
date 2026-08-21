@@ -1,7 +1,6 @@
 --// =====================================================
---// JUJUBOT v1
---// Clean Stand Follow System
---// Summon • Smooth Follow • Float • Positions
+--// JUJUBOT v2
+--// Smooth Stand Follow - No Floating/Jiggling
 --// =====================================================
 
 local Players = game:GetService("Players")
@@ -14,15 +13,13 @@ local LocalPlayer = Players.LocalPlayer
 --==================================================
 
 local Settings = {
-    Owner = "Oshisysj",
+    Owner = "OShisysj",
 
-    -- Follow smoothness
-    Smoothness = 0.10,
+    -- Higher = catches up faster
+    FollowSpeed = 8,
 
-    -- Floating settings
-    FloatHeight = 2.5,
-    FloatAmount = 0.35,
-    FloatSpeed = 2,
+    -- How far away before JujuBot starts catching up
+    Deadzone = 0.5,
 }
 
 --==================================================
@@ -31,26 +28,17 @@ local Settings = {
 
 local summoned = false
 local following = false
-local floating = true
 
 local positionMode = "Right"
-
-local currentCFrame = nil
+local chatConnection = nil
+local connectedOwner = nil
 
 --==================================================
--- GET PLAYER FUNCTIONS
+-- GET FUNCTIONS
 --==================================================
 
 local function getOwner()
     return Players:FindFirstChild(Settings.Owner)
-end
-
-local function getCharacter(player)
-    if not player then
-        return nil
-    end
-
-    return player.Character
 end
 
 local function getRoot(character)
@@ -62,54 +50,48 @@ local function getRoot(character)
 end
 
 --==================================================
--- POSITION SYSTEM
+-- POSITION OFFSET
 --==================================================
 
 local function getOffset()
 
     if positionMode == "Left" then
-
-        return Vector3.new(
-            -5,
-            Settings.FloatHeight,
-            1
-        )
+        return Vector3.new(-5, 2.5, 1)
 
     elseif positionMode == "Right" then
-
-        return Vector3.new(
-            5,
-            Settings.FloatHeight,
-            1
-        )
+        return Vector3.new(5, 2.5, 1)
 
     elseif positionMode == "Back" then
-
-        return Vector3.new(
-            0,
-            Settings.FloatHeight,
-            6
-        )
+        return Vector3.new(0, 2.5, 6)
 
     elseif positionMode == "Under" then
-
-        return Vector3.new(
-            0,
-            -5,
-            0
-        )
-
+        return Vector3.new(0, -5, 0)
     end
 
-    return Vector3.new(
-        5,
-        Settings.FloatHeight,
-        1
-    )
+    return Vector3.new(5, 2.5, 1)
 end
 
 --==================================================
--- STOP BOT
+-- SUMMON
+--==================================================
+
+local function summonBot()
+
+    local owner = getOwner()
+
+    if not owner or not owner.Character then
+        warn("JujuBot: Owner not found.")
+        return
+    end
+
+    summoned = true
+    following = true
+
+    print("JujuBot summoned!")
+end
+
+--==================================================
+-- STOP
 --==================================================
 
 local function stopBot()
@@ -117,57 +99,16 @@ local function stopBot()
     summoned = false
     following = false
 
-    currentCFrame = nil
-
     print("JujuBot stopped.")
 end
 
 --==================================================
--- SUMMON BOT
+-- SMOOTH FOLLOW
 --==================================================
 
-local function summonBot()
+RunService.RenderStepped:Connect(function(deltaTime)
 
-    local owner = getOwner()
-
-    if not owner then
-
-        warn(
-            "JujuBot: Owner not found."
-        )
-
-        return
-    end
-
-    summoned = true
-    following = true
-
-    -- Start from current position
-    if LocalPlayer.Character then
-
-        local root = getRoot(
-            LocalPlayer.Character
-        )
-
-        if root then
-            currentCFrame = root.CFrame
-        end
-    end
-
-    print("JujuBot summoned!")
-end
-
---==================================================
--- SMOOTH FOLLOW SYSTEM
---==================================================
-
-RunService.RenderStepped:Connect(function()
-
-    if not summoned then
-        return
-    end
-
-    if not following then
+    if not summoned or not following then
         return
     end
 
@@ -177,112 +118,75 @@ RunService.RenderStepped:Connect(function()
         return
     end
 
-    local myCharacter =
-        LocalPlayer.Character
+    local myCharacter = LocalPlayer.Character
+    local ownerCharacter = owner.Character
 
-    local ownerCharacter =
-        owner.Character
-
-    if not myCharacter then
+    if not myCharacter or not ownerCharacter then
         return
     end
 
-    if not ownerCharacter then
+    local myRoot = getRoot(myCharacter)
+    local ownerRoot = getRoot(ownerCharacter)
+
+    if not myRoot or not ownerRoot then
         return
     end
 
-    local myRoot =
-        getRoot(myCharacter)
+    -- Get the desired position around the owner
+    local offset = getOffset()
 
-    local ownerRoot =
-        getRoot(ownerCharacter)
-
-    if not myRoot then
-        return
-    end
-
-    if not ownerRoot then
-        return
-    end
-
-    -- Get selected position
-    local offset =
-        getOffset()
-
-    -- Position rotates with owner
     local targetPosition =
-        (
-            ownerRoot.CFrame
-            * CFrame.new(offset)
-        ).Position
+        (ownerRoot.CFrame * CFrame.new(offset)).Position
 
-    -- Floating animation
-    if floating then
+    -- Only move if we're far enough away
+    local distance =
+        (myRoot.Position - targetPosition).Magnitude
 
-        local bob =
-            math.sin(
-                time()
-                * Settings.FloatSpeed
-            )
-            * Settings.FloatAmount
-
-        targetPosition =
-            targetPosition
-            + Vector3.new(
-                0,
-                bob,
-                0
-            )
+    if distance <= Settings.Deadzone then
+        return
     end
+
+    -- Frame-rate independent smoothing
+    local alpha =
+        1 - math.exp(
+            -Settings.FollowSpeed * deltaTime
+        )
+
+    -- Smooth position
+    local newPosition =
+        myRoot.Position:Lerp(
+            targetPosition,
+            alpha
+        )
 
     -- Face the same direction as owner
-    local targetCFrame =
-        CFrame.new(
-            targetPosition,
-            targetPosition
-            + ownerRoot.CFrame.LookVector
-        )
-
-    -- Setup smooth movement
-    if not currentCFrame then
-
-        currentCFrame =
-            myRoot.CFrame
-
-    end
-
-    -- Smoothly move towards target
-    currentCFrame =
-        currentCFrame:Lerp(
-            targetCFrame,
-            Settings.Smoothness
-        )
+    local lookDirection =
+        ownerRoot.CFrame.LookVector
 
     myRoot.CFrame =
-        currentCFrame
+        CFrame.lookAt(
+            newPosition,
+            newPosition + lookDirection
+        )
 
 end)
 
 --==================================================
--- COMMAND SYSTEM
+-- COMMANDS
 --==================================================
 
 local function handleCommand(message)
 
-    message =
-        message:lower()
+    message = message:lower()
 
-    -- SUMMON
     if message == "summon!" then
 
         summonBot()
 
-    -- STOP
     elseif message == "stop!" then
 
         stopBot()
 
-    -- FOLLOW
     elseif message == "follow!" then
 
         summoned = true
@@ -290,193 +194,99 @@ local function handleCommand(message)
 
         print("JujuBot following.")
 
-    -- LEFT
     elseif message == "left!" then
 
         positionMode = "Left"
+        print("JujuBot: Left")
 
-        print(
-            "JujuBot position: Left"
-        )
-
-    -- RIGHT
     elseif message == "right!" then
 
         positionMode = "Right"
+        print("JujuBot: Right")
 
-        print(
-            "JujuBot position: Right"
-        )
-
-    -- BACK
     elseif message == "back!" then
 
         positionMode = "Back"
+        print("JujuBot: Back")
 
-        print(
-            "JujuBot position: Back"
-        )
-
-    -- UNDER
     elseif message == "under!" then
 
         positionMode = "Under"
-
-        print(
-            "JujuBot position: Under"
-        )
-
-    -- FLOAT
-    elseif message == "float!" then
-
-        floating = true
-
-        print(
-            "JujuBot floating enabled."
-        )
-
-    -- LAND
-    elseif message == "land!" then
-
-        floating = false
-
-        print(
-            "JujuBot floating disabled."
-        )
+        print("JujuBot: Under")
 
     end
-
 end
 
 --==================================================
--- CONNECT OWNER CHAT
+-- OWNER CHAT
 --==================================================
-
-local connectedOwner = nil
-local chatConnection = nil
 
 local function connectOwner()
 
-    local owner =
-        getOwner()
+    local owner = getOwner()
 
     if not owner then
-
-        print(
-            "JujuBot waiting for owner..."
-        )
-
+        print("JujuBot waiting for owner...")
         return
     end
 
-    -- Prevent duplicate connections
     if connectedOwner == owner then
         return
     end
 
     if chatConnection then
-
         chatConnection:Disconnect()
-
     end
 
     connectedOwner = owner
 
-    chatConnection =
-        owner.Chatted:Connect(
-            function(message)
+    chatConnection = owner.Chatted:Connect(function(message)
+        handleCommand(message)
+    end)
 
-                handleCommand(
-                    message
-                )
-
-            end
-        )
-
-    print(
-        "JujuBot connected to: "
-        .. owner.Name
-    )
-
+    print("JujuBot connected to: " .. owner.Name)
 end
 
--- Try connecting immediately
 connectOwner()
 
--- Connect if owner joins later
-Players.PlayerAdded:Connect(
-    function(player)
+Players.PlayerAdded:Connect(function(player)
 
-        if player.Name ==
-            Settings.Owner
-        then
-
-            task.wait(1)
-
-            connectOwner()
-
-        end
-
-    end
-)
-
---==================================================
--- RESPAWN HANDLING
---==================================================
-
-LocalPlayer.CharacterAdded:Connect(
-    function(character)
-
-        currentCFrame = nil
+    if player.Name == Settings.Owner then
 
         task.wait(1)
 
-        local root =
-            getRoot(character)
-
-        if root and summoned then
-
-            currentCFrame =
-                root.CFrame
-
-        end
-
+        connectOwner()
     end
-)
+end)
+
+--==================================================
+-- RESPAWN
+--==================================================
+
+LocalPlayer.CharacterAdded:Connect(function()
+
+    task.wait(1)
+
+    if summoned then
+        following = true
+    end
+end)
 
 --==================================================
 -- STARTUP
 --==================================================
 
 print("===================================")
-print("         JUJUBOT LOADED")
+print("           JUJUBOT LOADED")
 print("===================================")
-
-print(
-    "Owner: "
-    .. Settings.Owner
-)
-
+print("Owner: " .. Settings.Owner)
 print("")
-
 print("COMMANDS:")
-
-print("summon! - Summon JujuBot")
-print("stop! - Stop JujuBot")
-print("follow! - Follow owner")
-
-print("")
-
-print("POSITIONS:")
+print("summon!")
+print("stop!")
+print("follow!")
 print("left!")
 print("right!")
 print("back!")
 print("under!")
-
-print("")
-
-print("MOVEMENT:")
-print("float!")
-print("land!")
-
 print("===================================")
