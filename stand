@@ -1,0 +1,205 @@
+--// JujuBot - Clean Stand Base
+--// Summon + Follow + Position Commands
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+
+--==================================================
+-- SETTINGS
+--==================================================
+
+local Settings = {
+    Owner = "OShisysj",
+    FollowDistance = 5,
+    FollowSpeed = 0.18,
+}
+
+--==================================================
+-- STATE
+--==================================================
+
+local summoned = false
+local following = false
+local positionMode = "Right"
+
+--==================================================
+-- GET OWNER
+--==================================================
+
+local function getOwner()
+    return Players:FindFirstChild(Settings.Owner)
+end
+
+local function getCharacter(player)
+    if not player then return nil end
+    return player.Character
+end
+
+local function getRoot(character)
+    if not character then return nil end
+    return character:FindFirstChild("HumanoidRootPart")
+end
+
+--==================================================
+-- STOP EVERYTHING
+--==================================================
+
+local function stopBot()
+    following = false
+    summoned = false
+end
+
+--==================================================
+-- SUMMON
+--==================================================
+
+local function summonBot()
+    local owner = getOwner()
+
+    if not owner then
+        warn("JujuBot: Owner not found.")
+        return
+    end
+
+    summoned = true
+    following = true
+
+    print("JujuBot summoned.")
+end
+
+--==================================================
+-- POSITION OFFSET
+--==================================================
+
+local function getOffset()
+    if positionMode == "Left" then
+        return Vector3.new(-5, 2, 2)
+
+    elseif positionMode == "Right" then
+        return Vector3.new(5, 2, 2)
+
+    elseif positionMode == "Back" then
+        return Vector3.new(0, 2, 6)
+
+    elseif positionMode == "Under" then
+        return Vector3.new(0, -6, 0)
+
+    else
+        return Vector3.new(5, 2, 2)
+    end
+end
+
+--==================================================
+-- FOLLOW SYSTEM
+--==================================================
+
+RunService.Heartbeat:Connect(function()
+    if not summoned or not following then
+        return
+    end
+
+    local owner = getOwner()
+
+    local myCharacter = LocalPlayer.Character
+    local ownerCharacter = getCharacter(owner)
+
+    local myRoot = getRoot(myCharacter)
+    local ownerRoot = getRoot(ownerCharacter)
+
+    if not myRoot or not ownerRoot then
+        return
+    end
+
+    local offset = getOffset()
+
+    -- Offset rotates with the owner
+    local targetCFrame =
+        ownerRoot.CFrame
+        * CFrame.new(offset)
+
+    -- Smooth movement
+    myRoot.CFrame = myRoot.CFrame:Lerp(
+        targetCFrame,
+        Settings.FollowSpeed
+    )
+end)
+
+--==================================================
+-- CHAT COMMANDS
+--==================================================
+
+local function handleCommand(message)
+
+    -- Only allow the owner
+    -- This function is called only from owner's chat below
+
+    message = message:lower()
+
+    if message == "summon!" then
+        summonBot()
+
+    elseif message == "stop!" then
+        stopBot()
+
+    elseif message == "follow!" then
+        summoned = true
+        following = true
+
+    elseif message == "left!" then
+        positionMode = "Left"
+        print("JujuBot position: Left")
+
+    elseif message == "right!" then
+        positionMode = "Right"
+        print("JujuBot position: Right")
+
+    elseif message == "back!" then
+        positionMode = "Back"
+        print("JujuBot position: Back")
+
+    elseif message == "under!" then
+        positionMode = "Under"
+        print("JujuBot position: Under")
+    end
+end
+
+--==================================================
+-- OWNER CHAT LISTENER
+--==================================================
+
+local function connectOwner()
+
+    local owner = getOwner()
+
+    if not owner then
+        warn("JujuBot: Waiting for owner...")
+        return
+    end
+
+    owner.Chatted:Connect(function(message)
+        handleCommand(message)
+    end)
+
+    print("JujuBot connected to owner: " .. owner.Name)
+end
+
+connectOwner()
+
+-- Reconnect if owner joins later
+Players.PlayerAdded:Connect(function(player)
+    if player.Name == Settings.Owner then
+        connectOwner()
+    end
+end)
+
+print("================================")
+print("         JUJUBOT LOADED")
+print("Owner: " .. Settings.Owner)
+print("Commands:")
+print("summon!")
+print("stop!")
+print("follow!")
+print("left! / right! / back! / under!")
+print("================================")
